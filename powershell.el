@@ -82,6 +82,9 @@
 ;;;###autoload
 (add-to-list 'auto-mode-alist '("\\.ps[dm]?1\\'" . powershell-mode))
 
+(declare-function cygwin-convert-file-name-from-windows "cygw32.c"
+                  (path &optional absolute_p))
+
 
 ;; User Variables
 
@@ -1065,8 +1068,8 @@ See the help for `shell' for more details.  \(Type
 
     ;; add the hook that sets the flag
     (add-hook 'window-size-change-functions
-              '(lambda (&optional x)
-                 (setq powershell--need-rawui-resize t)))
+              #'(lambda (_)
+                  (setq powershell--need-rawui-resize t)))
 
     ;; set the flag so we resize properly the first time.
     (setq powershell--need-rawui-resize t)
