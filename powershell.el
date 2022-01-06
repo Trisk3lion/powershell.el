@@ -121,6 +121,12 @@ Value is a list of strings, which may be nil."
   :type '(repeat (string :tag "Argument"))
   :group 'powershell)
 
+(defcustom explicit-pwsh.exe-args '("-nop" "-nol" "-noni")
+  "Args passed to inferior shell by \\[shell], if the shell is pwsh.exe.
+Value is a list of strings, which may be nil."
+  :type '(repeat (string :tag "Argument"))
+  :group 'powershell)
+
 (defun powershell-continuation-line-p ()
   "Return t is the current line is a continuation line.
 The current line is a continued line when the previous line ends
@@ -789,9 +795,16 @@ that value is non-nil."
 ;;; PowerShell inferior mode
 
 ;;; Code:
-(defcustom powershell-location-of-exe
-   (or (executable-find "pwsh") (executable-find "powershell"))
+(defcustom powershell-location-of-exe (executable-find "powershell")
   "A string providing the location of the powershell executable. Since
+the newer PowerShell Core (pwsh.exe) does not replace the older Windows
+PowerShell (powershell.exe) when installed, this attempts to find the
+former first, and only if it doesn't exist, falls back to the latter."
+  :group 'powershell
+  :type 'string)
+
+(defcustom pwsh-location-of-exe (executable-find "pwsh")
+  "A string providing the location of the pwsh executable. Since
 the newer PowerShell Core (pwsh.exe) does not replace the older Windows
 PowerShell (powershell.exe) when installed, this attempts to find the
 former first, and only if it doesn't exist, falls back to the latter."
@@ -1109,6 +1122,125 @@ See the help for `shell' for more details.  \(Type
   ;; return the buffer created
   buffer)
 
+(defun pwsh-core (&optional buffer prompt-string)
+  "Run an inferior PowerShell Core.
+If BUFFER is non-nil, use it to hold the powershell
+process.  Defaults to *PowerShell*.
+
+Interactively, a prefix arg means to prompt for BUFFER.
+
+If BUFFER exists but the shell process is not running, it makes a
+new shell.
+
+If BUFFER exists and the shell process is running, just switch to
+BUFFER.
+
+If PROMPT-STRING is non-nil, sets the prompt to the given value.
+
+See the help for `shell' for more details.  \(Type
+\\[describe-mode] in the shell buffer for a list of commands.)"
+  (interactive
+   (list
+    (and current-prefix-arg
+         (read-buffer "Shell buffer: "
+                      (generate-new-buffer-name "*Pwsh*")))))
+
+  (setq buffer (get-buffer-create (or buffer "*Pwsh*")))
+  (powershell-log 1 "pwsh-core starting up...in buffer %s" (buffer-name buffer))
+  (let ((explicit-shell-file-name (if (eq system-type 'cygwin)
+				      (cygwin-convert-file-name-from-windows pwsh-location-of-exe)
+				    pwsh-location-of-exe)))
+    ;; set arguments for the powershell exe.
+    ;; Does this need to be tunable?
+
+    (shell buffer))
+
+  ;; (powershell--get-max-window-width "*PowerShell*")
+  ;; (powershell-invoke-command-silently (get-buffer-process "*csdeshell*")
+  ;; "[Ionic.Csde.Utilities]::Version()" 2.9)
+
+  ;;  (comint-simple-send (get-buffer-process "*csdeshell*") "prompt\n")
+
+  (let ((proc (get-buffer-process buffer)))
+
+    (make-local-variable 'powershell-prompt-regex)
+    (make-local-variable 'powershell-command-reply)
+    ;; (make-local-variable 'powershell--max-window-width)
+    ;; (make-local-variable 'powershell-command-timeout-seconds)
+    ;; (make-local-variable 'powershell-squish-results-of-silent-commands)
+    ;; (make-local-variable 'powershell--need-rawui-resize)
+    (make-local-variable 'comint-prompt-read-only)
+
+    ;; disallow backspace over the prompt:
+    (setq comint-prompt-read-only t)
+
+    (setq comint-prompt-regexp powershell-prompt-regex)
+
+    ;; Pwsh echoes all commands by default
+    (setq comint-process-echoes t)
+
+    ;; We need to tell powershell how wide the emacs window is, because
+    ;; powershell pads its output to the width it thinks its window is.
+    ;;
+    ;; The way it's done: every time the width of the emacs window changes, we
+    ;; set a flag. Then, before sending a powershell command that is
+    ;; typed into the buffer, to the actual powershell process, we check
+    ;; that flag.  If it is set, we  resize the powershell window appropriately,
+    ;; before sending the command.
+
+    ;; If we didn't do this, powershell output would get wrapped at a
+    ;; column width that would be different than the emacs buffer width,
+    ;; and everything would look ugly.
+
+    ;; get the maximum width for powershell - can't go beyond this
+    ;; (powershell--get-max-window-width buffer)
+
+    ;; define the function for use within powershell to resize the window
+    ;; (powershell--define-set-window-width-function proc)
+
+    ;; add the hook that sets the flag
+    ;; (add-hook 'window-size-change-functions
+    ;;           #'(lambda (_)
+    ;;               (setq powershell--need-rawui-resize t)))
+
+    ;; ;; set the flag so we resize properly the first time.
+    ;; (setq powershell--need-rawui-resize t)
+
+    (if prompt-string
+        (progn
+          ;; This sets up a prompt for the PowerShell.  The prompt is
+          ;; important because later, after sending a command to the
+          ;; shell, the scanning logic that grabs the output looks for
+          ;; the prompt string to determine that the output is complete.
+          (comint-simple-send
+           proc
+           (concat "function prompt { '" prompt-string "' }"))
+
+          (setq powershell-prompt-regex prompt-string)))
+
+    ;; hook the kill-buffer action so we can kill the inferior process?
+    (add-hook 'kill-buffer-hook 'powershell-delete-process)
+
+    ;; wrap the comint-input-sender with a PS version
+    ;; must do this after launching the shell!
+    ;; (make-local-variable 'comint-input-sender)
+    ;; (setq comint-input-sender 'powershell-simple-send)
+
+    ;; set a preoutput filter for powershell.  This will trim newlines
+    ;; after the prompt.
+    (add-hook 'comint-preoutput-filter-functions
+              'powershell-preoutput-filter-for-prompt)
+
+    ;; send a carriage-return  (get the prompt)
+    ;; (comint-send-input)
+    (accept-process-output proc))
+
+  ;; The launch hooks for powershell has not (yet?) been implemented
+  ;;(run-hooks 'powershell-launch-hook)
+
+  ;; return the buffer created
+  buffer)
+
 ;; +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-
 ;; Using powershell on emacs23, I get an error:
 ;;
@@ -1145,10 +1277,10 @@ See the help for `shell' for more details.  \(Type
                                        compile)
   (progn
     (let ((start-pos (marker-position begin)))
-    (cond
-     (start-pos
-      (progn
-        ad-do-it))))))
+      (cond
+       (start-pos
+        (progn
+          ad-do-it))))))
 
 (defun powershell--silent-cmd-filter (process result)
 "A process filter that captures output from a shell and stores it
