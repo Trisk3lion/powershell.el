@@ -1057,6 +1057,8 @@ See the help for `shell' for more details.  \(Type
     (make-local-variable 'powershell--need-rawui-resize)
     (make-local-variable 'comint-prompt-read-only)
 
+    (setq comint-prompt-regexp powershell-prompt-regex)
+
     ;; disallow backspace over the prompt:
     (setq comint-prompt-read-only t)
 
@@ -1110,7 +1112,7 @@ See the help for `shell' for more details.  \(Type
     ;; set a preoutput filter for powershell.  This will trim newlines
     ;; after the prompt.
     (add-hook 'comint-preoutput-filter-functions
-              'powershell-preoutput-filter-for-prompt)
+              #'powershell-preoutput-filter-for-prompt)
 
     ;; send a carriage-return  (get the prompt)
     (comint-send-input)
@@ -1179,33 +1181,6 @@ See the help for `shell' for more details.  \(Type
     ;; Pwsh echoes all commands by default
     (setq comint-process-echoes t)
 
-    ;; We need to tell powershell how wide the emacs window is, because
-    ;; powershell pads its output to the width it thinks its window is.
-    ;;
-    ;; The way it's done: every time the width of the emacs window changes, we
-    ;; set a flag. Then, before sending a powershell command that is
-    ;; typed into the buffer, to the actual powershell process, we check
-    ;; that flag.  If it is set, we  resize the powershell window appropriately,
-    ;; before sending the command.
-
-    ;; If we didn't do this, powershell output would get wrapped at a
-    ;; column width that would be different than the emacs buffer width,
-    ;; and everything would look ugly.
-
-    ;; get the maximum width for powershell - can't go beyond this
-    ;; (powershell--get-max-window-width buffer)
-
-    ;; define the function for use within powershell to resize the window
-    ;; (powershell--define-set-window-width-function proc)
-
-    ;; add the hook that sets the flag
-    ;; (add-hook 'window-size-change-functions
-    ;;           #'(lambda (_)
-    ;;               (setq powershell--need-rawui-resize t)))
-
-    ;; ;; set the flag so we resize properly the first time.
-    ;; (setq powershell--need-rawui-resize t)
-
     (if prompt-string
         (progn
           ;; This sets up a prompt for the PowerShell.  The prompt is
@@ -1229,7 +1204,8 @@ See the help for `shell' for more details.  \(Type
     ;; set a preoutput filter for powershell.  This will trim newlines
     ;; after the prompt.
     (add-hook 'comint-preoutput-filter-functions
-              'powershell-preoutput-filter-for-prompt)
+              #'powershell-preoutput-filter-for-prompt)
+
 
     ;; send a carriage-return  (get the prompt)
     ;; (comint-send-input)
@@ -1402,9 +1378,9 @@ Example:
   "Trim the newline from STRING, the prompt that we get back from
 powershell.  This fn is set into the preoutput filters, so the
 newline is trimmed before being put into the output buffer."
-   (if (string-match (concat powershell-prompt-regex "\n\\'") string)
-       (substring string 0 -1) ;; remove newline
-     string))
+  (if (string-match (concat powershell-prompt-regex "\n\\'") string)
+      (substring string 0 -1) ;; remove newline
+    string))
 
 (defun powershell-simple-send (proc string)
   "Override of the comint-simple-send function, with logic
