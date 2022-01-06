@@ -810,6 +810,11 @@ newlines and formatting removed. Set this to true, to do that."
   :group 'powershell
   :type 'boolean)
 
+(defcustom powershell-silent-cmd-timeout 0.9
+  "Timout in seconds for `powershell-invoke-command-silently'."
+  :group 'powershell
+  :type 'float)
+
 (defvar powershell-prompt-regex  "PS [^#$%>]+> "
   "Regexp to match the powershell prompt.
 powershell.el uses this regex to determine when a command has
@@ -958,7 +963,7 @@ This function does the right thing, and sets the buffer-local
           (powershell-invoke-command-silently
            proc
            powershell--find-max-window-width-command
-           0.90)
+           powershell-silent-cmd-timeout)
 
           ;; store the retrieved width
           (setq powershell--max-window-width
