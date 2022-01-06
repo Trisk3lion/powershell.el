@@ -972,7 +972,7 @@ This function does the right thing, and sets the buffer-local
           (setq powershell--max-window-width
                 (if (and (not (null powershell-command-reply))
                          (string-match
-                          "\\([1-9][0-9]*\\)[ \t\f\v\n]+"
+                          (concat "\\([1-9][0-9]*\\)\\(?:" powershell-prompt-regex "\\|[ \t\f\v\n]+\\)")
                           powershell-command-reply))
                     (string-to-number (match-string 1 powershell-command-reply))
                   200)))))) ;; could go to 210, but let's use 200 to be safe
